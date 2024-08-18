@@ -1,9 +1,10 @@
 use tokio_postgres::{NoTls, Error};
 use dotenv::dotenv;
 use std::env;
-use anyhow::Result;
-use log::{info};
+use anyhow::{Result, anyhow};
+use log::{info, error};
 use env_logger;
+use reqwest::Client;
 
 mod version_fetcher;
 
@@ -44,11 +45,30 @@ async fn update_version_in_db(client: &tokio_postgres::Client, webhook_url: &str
     Ok(())
 }
 
-async fn send_upgrade_notification(webhook_url: &str) -> Result<(), Error> {
-    // Placeholder for sending the upgrade notification to the webhook
+async fn send_upgrade_notification(webhook_url: &str) -> Result<(), anyhow::Error> {
     info!("Sending upgrade notification to {}", webhook_url);
-    println!("Webhook request sent to: {}", webhook_url);
-    // Simulate sending the notification
+
+    // Create a reqwest client that accepts self-signed certificates
+    let client = Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .map_err(|e| anyhow!("Failed to build HTTP client: {}", e))?;
+
+    let res = client.post(webhook_url)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body("Redeploy with latest image of same tag")
+        .send()
+        .await
+        .map_err(|e| anyhow!("Failed to send POST request: {}", e))?;
+
+    if res.status().is_success() {
+        info!("Webhook request sent successfully to: {}", webhook_url);
+        println!("Webhook request sent to: {}", webhook_url);
+    } else {
+        error!("Failed to send webhook request: {}", res.status());
+        return Err(anyhow!("Failed to send webhook request: {}", res.status()));
+    }
+
     Ok(())
 }
 
@@ -79,8 +99,11 @@ async fn check_and_update() -> Result<(), Box<dyn std::error::Error>> {
 
         if compare_versions(&version, &latest_version) {
             info!("Updating {} from version {} to {}", webhook_url, version, latest_version);
+            if let Err(e) = send_upgrade_notification(&webhook_url).await {
+                error!("Failed to send upgrade notification: {}", e);
+                continue; // Skip updating the database if the notification fails
+            }
             update_version_in_db(&db_client, &webhook_url, &latest_version).await?;
-            send_upgrade_notification(&webhook_url).await?;
             println!("Triggered upgrade for {}", webhook_url);
         } else {
             info!("No update needed for {} as the version {} is up-to-date", webhook_url, version);
