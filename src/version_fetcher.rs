@@ -25,7 +25,7 @@ pub async fn fetch_latest_version(namespace: &str, repository: &str, image_sourc
 
     let url = match image_source {
         "dockerhub" => format!("https://hub.docker.com/v2/repositories/{}/{}/tags?page_size=100", namespace, repository),
-        "ghcr" => format!("https://ghcr.io/v2/{}/{}/tags/list?n=10", namespace, repository),
+        "ghcr" => format!("https://ghcr.io/v2/{}/{}/tags/list", namespace, repository),
         _ => return Err(anyhow!("Unsupported image source")),
     };
 
@@ -67,16 +67,16 @@ pub async fn fetch_latest_version(namespace: &str, repository: &str, image_sourc
             })?;
         info!("Received GHCR response: {:?}", ghcr_response);
 
-        // Find the tag that comes after "main"
-        let main_index = ghcr_response.tags.iter().position(|tag| tag == "main");
+        // Find the tag that comes after "latest"
+        let main_index = ghcr_response.tags.iter().position(|tag| tag == "latest");
         let latest_tag = if let Some(index) = main_index {
             if index + 1 < ghcr_response.tags.len() {
                 &ghcr_response.tags[index + 1]
             } else {
-                return Err(anyhow!("No tag found after 'main'"));
+                return Err(anyhow!("No tag found after 'latest'"));
             }
         } else {
-            return Err(anyhow!("'main' tag not found"));
+            return Err(anyhow!("'latest' tag not found"));
         };
 
         latest_tag.clone()
