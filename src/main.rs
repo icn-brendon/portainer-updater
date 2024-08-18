@@ -20,9 +20,9 @@ async fn connect_to_db() -> Result<tokio_postgres::Client, Error> {
     Ok(client)
 }
 
-async fn fetch_containers(client: &tokio_postgres::Client) -> Result<Vec<(String, String, String, String, String)>, Error> {
+async fn fetch_containers(client: &tokio_postgres::Client) -> Result<Vec<(String, String, String, String, String, Option<String>)>, Error> {
     info!("Fetching containers from database");
-    let rows = client.query("SELECT webhook_url, version, namespace, repository, image_source FROM containers", &[]).await?;
+    let rows = client.query("SELECT webhook_url, version, namespace, repository, image_source, arch FROM containers", &[]).await?;
     let mut data = Vec::new();
     for row in rows {
         let webhook_url: String = row.get(0);
@@ -30,7 +30,8 @@ async fn fetch_containers(client: &tokio_postgres::Client) -> Result<Vec<(String
         let namespace: String = row.get(2);
         let repository: String = row.get(3);
         let image_source: String = row.get(4);
-        data.push((webhook_url, version, namespace, repository, image_source));
+        let arch: Option<String> = row.get(5);
+        data.push((webhook_url, version, namespace, repository, image_source, arch));
     }
     info!("Fetched containers data: {:?}", data);
     Ok(data)
@@ -90,8 +91,8 @@ async fn check_and_update() -> Result<(), Box<dyn std::error::Error>> {
     let db_client = connect_to_db().await?;
     let data = fetch_containers(&db_client).await?;
 
-    for (webhook_url, version, namespace, repository, image_source) in data {
-        let latest_version = version_fetcher::fetch_latest_version(&namespace, &repository, &image_source, &version).await?;
+    for (webhook_url, version, namespace, repository, image_source, arch) in data {
+        let latest_version = version_fetcher::fetch_latest_version(&namespace, &repository, &image_source, &version, arch.as_deref()).await?;
         info!("Fetched latest version for {}/{}: {}", namespace, repository, latest_version);
 
         // Log the versions being compared
