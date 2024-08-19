@@ -58,9 +58,13 @@ VALUES ('https://example.com/webhooks/12345', 1, 'music-assistant', 'server', 'd
 # Step 4: Create a `.env` File with Required Information
 
 Create a `.env` file with the following variables:
+
 `DATABASE_URL`: the URL of your Postgres database (e.g., `postgres://'username':'password'@'localhost:5432'/database_name'`)
+
 `GHCR_TOKEN`: the PAT token from GitHub in base64 format
+
 `TELEGRAM_CHAT_ID`: the chat ID received from Telegram's bot API
+
 `TELEGRAM_BOT_TOKEN`: the token for your Telegram bot
 
 # Contributing
