@@ -1,4 +1,6 @@
-use tokio_postgres::{NoTls, Error};
+use tokio_postgres::Error;
+use postgres_native_tls::MakeTlsConnector;
+use native_tls::TlsConnector;
 use dotenv::dotenv;
 use std::env;
 use anyhow::{Result, anyhow};
@@ -11,7 +13,14 @@ mod version_fetcher;
 async fn connect_to_db() -> Result<tokio_postgres::Client, Error> {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     info!("Connecting to database at {}", database_url);
-    let (client, connection) = tokio_postgres::connect(&database_url, NoTls).await?;
+
+    // Create a TlsConnector that ignores self-signed certificates
+    let mut builder = TlsConnector::builder();
+    builder.danger_accept_invalid_certs(true);
+    let native_tls_connector = builder.build().unwrap();
+    let connector = MakeTlsConnector::new(native_tls_connector);
+
+    let (client, connection) = tokio_postgres::connect(&database_url, connector).await?;
     tokio::spawn(async move {
         if let Err(e) = connection.await {
             eprintln!("connection error: {}", e);
