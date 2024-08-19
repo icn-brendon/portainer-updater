@@ -5,6 +5,8 @@ Portainer Automatic Updater
 
 This project is designed to automatically update container images using Portainer's webhook support. Note that this software has limited testing and no guarantee of results - use at your own risk!
 
+This is my first projecet any suggestions or feedback would be great! I am new to programming this project will consist of a lot of it is googling, LLM and then understanding and research of said outputs.
+
 # Requirements
 
 *  Postgres database with TLS enabled
