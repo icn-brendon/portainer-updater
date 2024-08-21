@@ -9,7 +9,7 @@ use env_logger;
 use reqwest::Client;
 
 mod version_fetcher;
-mod telegram_reporter;
+mod ntfy_reporter;
 
 async fn connect_to_db() -> Result<tokio_postgres::Client, Error> {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
@@ -79,9 +79,9 @@ async fn send_upgrade_notification(webhook_url: &str) -> Result<(), anyhow::Erro
         let error_message = format!("Failed to send webhook request: {}", res.status());
         error!("{}", error_message);
 
-        // Send Telegram alert
-        if let Err(e) = telegram_reporter::send_telegram_report(&error_message).await {
-            error!("Failed to send Telegram alert: {}", e);
+        // Send ntfy alert
+        if let Err(e) = ntfy_reporter::send_ntfy_report(&error_message).await {
+            error!("Failed to send ntfy alert: {}", e);
         }
 
         return Err(anyhow!(error_message));
@@ -118,11 +118,11 @@ async fn check_and_update() -> Result<(), Box<dyn std::error::Error>> {
         if compare_versions(&version, &latest_version) {
             info!("Updating {}/{} from version {} to {}", namespace, repository, version, latest_version);
 
-            // Send a pre-upgrade report to Telegram
+            // Send a pre-upgrade report to ntfy
             let pre_upgrade_message = format!("Starting upgrade for {}/{} from version {} to {}", namespace, repository, version, latest_version);
-            info!("Sending pre-upgrade Telegram report: {}", pre_upgrade_message);
-            if let Err(e) = telegram_reporter::send_telegram_report(&pre_upgrade_message).await {
-                error!("Failed to send pre-upgrade Telegram report: {}", e);
+            info!("Sending pre-upgrade ntfy report: {}", pre_upgrade_message);
+            if let Err(e) = ntfy_reporter::send_ntfy_report(&pre_upgrade_message).await {
+                error!("Failed to send pre-upgrade ntfy report: {}", e);
             }
 
             if let Err(e) = send_upgrade_notification(&webhook_url).await {
@@ -132,11 +132,11 @@ async fn check_and_update() -> Result<(), Box<dyn std::error::Error>> {
             update_version_in_db(&db_client, &webhook_url, &latest_version).await?;
             println!("Triggered upgrade for {}/{}", namespace, repository);
 
-            // Send a post-upgrade report to Telegram
+            // Send a post-upgrade report to ntfy
             let post_upgrade_message = format!("Completed upgrade for {}/{} from version {} to {}", namespace, repository, version, latest_version);
-            info!("Sending post-upgrade Telegram report: {}", post_upgrade_message);
-            if let Err(e) = telegram_reporter::send_telegram_report(&post_upgrade_message).await {
-                error!("Failed to send post-upgrade Telegram report: {}", e);
+            info!("Sending post-upgrade ntfy report: {}", post_upgrade_message);
+            if let Err(e) = ntfy_reporter::send_ntfy_report(&post_upgrade_message).await {
+                error!("Failed to send post-upgrade ntfy report: {}", e);
             }
         } else {
             info!("No update needed for {}/{} as the version {} is up-to-date", namespace, repository, version);
