@@ -18,3 +18,8 @@ env_logger = "0.11.5"
 semver = "1.0.23"
 native-tls = "0.2"
 postgres-native-tls = "0.5" 
+futures = "0.3"
+
+[[bin]]
+name = "llm_search"
+path = "src/llm_search.rs"
