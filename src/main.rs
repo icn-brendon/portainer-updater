@@ -112,7 +112,13 @@ async fn check_and_update() -> Result<(), Box<dyn std::error::Error>> {
     let data = fetch_containers(&db_client).await?;
 
     for (webhook_url, version, namespace, repository, image_source, arch, safe_update_check) in data {
-        let latest_version = version_fetcher::fetch_latest_version(&namespace, &repository, &image_source, &version, arch.as_deref()).await?;
+        let latest_version = match version_fetcher::fetch_latest_version(&namespace, &repository, &image_source, &version, arch.as_deref()).await {
+            Ok(version) => version,
+            Err(e) => {
+                error!("Failed to fetch latest version for {}/{}: {}", namespace, repository, e);
+                continue; // Move on to the next container
+            }
+        };
         info!("Fetched latest version for {}/{}: {}", namespace, repository, latest_version);
 
         // Log the versions being compared
@@ -129,7 +135,18 @@ async fn check_and_update() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // Use llm_search to get the upgrade summary
-            let llm_response = llm_search::llm_search(&version, &latest_version, &image_source, &namespace, &repository).await?;
+            let llm_response = match llm_search::llm_search(&version, &latest_version, &image_source, &namespace, &repository, safe_update_check).await {
+                Ok(response) => response,
+                Err(e) => {
+                    if safe_update_check {
+                        error!("Failed to connect to LLM host for {}/{}: {}", namespace, repository, e);
+                        continue; // Move on to the next container
+                    } else {
+                        info!("LLM search failed, proceeding with upgrade: {}", e);
+                        String::from("LLM search failed, proceeding with upgrade")
+                    }
+                }
+            };
             info!("LLM Search Response: {}", llm_response);
 
             if safe_update_check {
@@ -143,10 +160,13 @@ async fn check_and_update() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if let Err(e) = send_upgrade_notification(&webhook_url).await {
-                error!("Failed to send upgrade notification: {}", e);
+                error!("Failed to send upgrade notification for {}/{}: {}", namespace, repository, e);
                 continue; // Skip updating the database if the notification fails
             }
-            update_version_in_db(&db_client, &webhook_url, &latest_version).await?;
+            if let Err(e) = update_version_in_db(&db_client, &webhook_url, &latest_version).await {
+                error!("Failed to update version in database for {}/{}: {}", namespace, repository, e);
+                continue; // Move on to the next container
+            }
             println!("Triggered upgrade for {}/{}", namespace, repository);
 
             // Send a post-upgrade report to ntfy
