@@ -19,7 +19,8 @@ semver = "1.0.23"
 native-tls = "0.2"
 postgres-native-tls = "0.5" 
 futures = "0.3"
+warp = "0.3"
 
 [[bin]]
-name = "llm_search"
-path = "src/llm_search.rs"
+name = "web_server"
+path = "src/web_server.rs"

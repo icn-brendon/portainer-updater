@@ -7,9 +7,11 @@ use anyhow::{Result, anyhow};
 use log::{info, error};
 use env_logger;
 use reqwest::Client;
+use crate::ntfy_reporter::send_ntfy_report; // Import the send_ntfy_report function
 
 mod version_fetcher;
 mod ntfy_reporter;
+mod llm_search;
 
 async fn connect_to_db() -> Result<tokio_postgres::Client, Error> {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
@@ -30,9 +32,9 @@ async fn connect_to_db() -> Result<tokio_postgres::Client, Error> {
     Ok(client)
 }
 
-async fn fetch_containers(client: &tokio_postgres::Client) -> Result<Vec<(String, String, String, String, String, Option<String>)>, Error> {
+async fn fetch_containers(client: &tokio_postgres::Client) -> Result<Vec<(String, String, String, String, String, Option<String>, bool)>, Error> {
     info!("Fetching containers from database");
-    let rows = client.query("SELECT webhook_url, version, namespace, repository, image_source, arch FROM containers", &[]).await?;
+    let rows = client.query("SELECT webhook_url, version, namespace, repository, image_source, arch, COALESCE(safe_update_check, FALSE) FROM containers", &[]).await?;
     let mut data = Vec::new();
     for row in rows {
         let webhook_url: String = row.get(0);
@@ -41,7 +43,8 @@ async fn fetch_containers(client: &tokio_postgres::Client) -> Result<Vec<(String
         let repository: String = row.get(3);
         let image_source: String = row.get(4);
         let arch: Option<String> = row.get(5);
-        data.push((webhook_url, version, namespace, repository, image_source, arch));
+        let safe_update_check: bool = row.get(6);
+        data.push((webhook_url, version, namespace, repository, image_source, arch, safe_update_check));
     }
     info!("Fetched containers data: {:?}", data);
     Ok(data)
@@ -80,7 +83,7 @@ async fn send_upgrade_notification(webhook_url: &str) -> Result<(), anyhow::Erro
         error!("{}", error_message);
 
         // Send ntfy alert
-        if let Err(e) = ntfy_reporter::send_ntfy_report(&error_message).await {
+        if let Err(e) = send_ntfy_report(&error_message, true).await {
             error!("Failed to send ntfy alert: {}", e);
         }
 
@@ -108,7 +111,7 @@ async fn check_and_update() -> Result<(), Box<dyn std::error::Error>> {
     let db_client = connect_to_db().await?;
     let data = fetch_containers(&db_client).await?;
 
-    for (webhook_url, version, namespace, repository, image_source, arch) in data {
+    for (webhook_url, version, namespace, repository, image_source, arch, safe_update_check) in data {
         let latest_version = version_fetcher::fetch_latest_version(&namespace, &repository, &image_source, &version, arch.as_deref()).await?;
         info!("Fetched latest version for {}/{}: {}", namespace, repository, latest_version);
 
@@ -121,8 +124,22 @@ async fn check_and_update() -> Result<(), Box<dyn std::error::Error>> {
             // Send a pre-upgrade report to ntfy
             let pre_upgrade_message = format!("Starting upgrade for {}/{} from version {} to {}", namespace, repository, version, latest_version);
             info!("Sending pre-upgrade ntfy report: {}", pre_upgrade_message);
-            if let Err(e) = ntfy_reporter::send_ntfy_report(&pre_upgrade_message).await {
+            if let Err(e) = send_ntfy_report(&pre_upgrade_message, false).await {
                 error!("Failed to send pre-upgrade ntfy report: {}", e);
+            }
+
+            // Use llm_search to get the upgrade summary
+            let llm_response = llm_search::llm_search(&version, &latest_version, &image_source, &namespace, &repository).await?;
+            info!("LLM Search Response: {}", llm_response);
+
+            if safe_update_check {
+                // Send ntfy report about the LLM search response
+                let safe_update_message = format!("Safe update check for {}/{} from version {} to {}: {}", namespace, repository, version, latest_version, llm_response);
+                info!("Sending safe update ntfy report: {}", safe_update_message);
+                if let Err(e) = send_ntfy_report(&safe_update_message, false).await {
+                    error!("Failed to send safe update ntfy report: {}", e);
+                }
+                // Add logic in future for actionable alerts
             }
 
             if let Err(e) = send_upgrade_notification(&webhook_url).await {
@@ -135,7 +152,7 @@ async fn check_and_update() -> Result<(), Box<dyn std::error::Error>> {
             // Send a post-upgrade report to ntfy
             let post_upgrade_message = format!("Completed upgrade for {}/{} from version {} to {}", namespace, repository, version, latest_version);
             info!("Sending post-upgrade ntfy report: {}", post_upgrade_message);
-            if let Err(e) = ntfy_reporter::send_ntfy_report(&post_upgrade_message).await {
+            if let Err(e) = send_ntfy_report(&post_upgrade_message, false).await {
                 error!("Failed to send post-upgrade ntfy report: {}", e);
             }
         } else {
