@@ -23,7 +23,7 @@ pub async fn llm_search(current_version: &str, latest_version: &str, image_sourc
     };
 
     // Construct the search query string
-    let search_query = format!("Upgrading {} from {} to {} release notes or breaking changes", container_url, current_version, latest_version );
+    let search_query = format!("Upgrading {} from {} to {} release notes or breaking changes requirements", container_url, current_version, latest_version );
 
     // Step 1: Perform a web search with increased timeout
     let search_body = json!({
@@ -62,7 +62,7 @@ pub async fn llm_search(current_version: &str, latest_version: &str, image_sourc
         }],
         "messages": [{
             "role": "user",
-            "content": format!("We are upgrading a container from version {} to {}. Please make entire output in JSON format, providing only the necessary information. Confirm whether there are any breaking changes by providing a true or false statement based on the web search query. If there are breaking changes, list them in the summary. Do no hullicante get to the point minor changes can be listed as safe if no user actions are required", current_version, latest_version)
+            "content": format!("We are upgrading a container from version {} to {}. Please make entire output in clean readable format for mobile users for notification purposes, ensure that the upgrade process between versions don't have any major issues or requirements, providing only the necessary information.\n\nFormatting standard as:\nNamespace: {}\nNew version: {}\nSafe to Upgrade? Yes/No\nSummary of impact:\n\nConfirm whether there are any breaking changes by providing a true or false statement based on the web search query. If there are breaking changes, list them in the summary. Do not hesitate to get to the point; minor changes can be listed as safe if no user actions are required.", current_version, latest_version, namespace, latest_version)
         }]
     });
 

@@ -141,7 +141,7 @@ fn strip_suffix<'a>(version: &'a str, arch: Option<&'a str>) -> &'a str {
     let version = version.strip_prefix('v').unwrap_or(version);
     let version = match arch {
         Some(arch) => version.strip_suffix(&format!("-{}", arch)).unwrap_or(version),
-        None => version.split('-').next().unwrap_or(version),
+        _ => version.split('-').next().unwrap_or(version),
     };
     version
 }
